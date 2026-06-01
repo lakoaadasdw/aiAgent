@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: aiAgent
+  ai:
+    deepseek:
+      api-key: sk-b13f06b8a8f44f64a52fa35cb15dc330
+      chat:
+        model: deepseek-v4-flash
+        temperature: 0.7
+
