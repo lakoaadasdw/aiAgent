@@ -4,11 +4,10 @@ package com.example.aiagent.Tools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
-import java.awt.event.FocusEvent;
 import java.io.BufferedWriter;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,13 +18,14 @@ import java.nio.file.Path;
  */
 @SuppressWarnings({"all"})
 @Component
-public class ResultTools {
+public class IOTools implements AgentToolsInterface {
 
 
-    private static final Logger log = LoggerFactory.getLogger(ResultTools.class);
+    private static final Logger log = LoggerFactory.getLogger(IOTools.class);
 
     @Tool(description = "AI创建文件专用功能,在用户未声明具体的文件名,地址,内容时ai自行决定,指定了则严格按照用户指定的内容")
-    public String createFile(String address, String name, String content) {
+    public String createFile(@ToolParam(description = "文件地址") String address, @ToolParam(description = "文件名") String name,
+                             @ToolParam(description = "文件内容") String content) {
         try {
             Path path = Path.of(address);
 
@@ -48,7 +48,7 @@ public class ResultTools {
 
 
     @Tool(description = "AI删除文件专用功能,在用户未声明具体的文件名,地址时ai自行决定,指定了则严格按照用户指定的内容")
-    public String deleteFile(String address, String name) {
+    public String deleteFile(@ToolParam(description = "文件地址") String address,@ToolParam(description = "文件名") String name) {
         try {
             Path path = Path.of(address);
             Files.deleteIfExists(path.resolve(name));
@@ -60,7 +60,9 @@ public class ResultTools {
     }
 
     @Tool(description = "AI修改文件专用功能,在用户未声明具体的文件名,地址,内容时ai自行决定,指定了则严格按照用户指定的内容")
-    public String modifyFile(String address, String name, String content) {
+    public String modifyFile(@ToolParam(description = "文件地址") String address,
+                             @ToolParam(description = "文件名") String name,
+                             @ToolParam(description = "文件内容") String content) {
         try {
             Path path = Path.of(address);
             BufferedWriter writer = Files.newBufferedWriter(path.resolve(name));
@@ -75,7 +77,7 @@ public class ResultTools {
     }
 
     @Tool(description = "AI查看文件专用功能,在用户未声明具体的文件名,地址时ai自行决定,指定了则严格按照用户指定的内容")
-    public String viewFile(String address, String name) {
+    public String viewFile(@ToolParam(description = "文件地址") String address,@ToolParam(description = "文件名") String name) {
         try {
             Path path = Path.of(address);
             String content = Files.readString(path.resolve(name));
@@ -83,6 +85,21 @@ public class ResultTools {
         }catch (IOException e){
             log.info("查看文件失败：{}",e.getMessage());
             return "查看文件失败：" + e.getMessage();
+        }
+    }
+
+
+    @Tool(description = "当用户提出跟项目有关的,优先获取当前项目地址,其次使用提供的地址")
+    public String getProjectPath(@ToolParam(description = "项目地址") String address) {
+        try {
+            String projectPath = System.getProperty("user.dir");
+            if (address != null && !address.isEmpty()) {
+                projectPath = address;
+            }
+            return projectPath;
+        } catch (Exception e) {
+            log.info("获取项目路径失败：{}", e.getMessage());
+            return "获取项目路径失败：" + e.getMessage();
         }
     }
 }

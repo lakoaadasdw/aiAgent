@@ -1,6 +1,7 @@
 package com.example.aiagent.Tools;
 
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -11,8 +12,9 @@ import java.util.stream.Collectors;
  * 扫描工具类
  * 提供文件系统扫描、目录扫描、包扫描、注解扫描等多种扫描方法
  */
+@SuppressWarnings({"all"})
 @Component
-public class ScanTools {
+public class ScanTools implements AgentToolsInterface {
 
     // ==================== 1. 文件系统扫描 ====================
 
@@ -20,17 +22,19 @@ public class ScanTools {
      * 扫描指定目录下的所有文件（递归）
      *
      * @param dirPath 目录路径
-     * @return 文件列表
+     * @return 文件列表字符串
      */
     @Tool(description = "扫描指定目录下的所有文件（递归），返回文件列表")
-    public static List<File> scanFilesRecursively(String dirPath) {
+    public String scanFilesRecursively(@ToolParam(description = "目录路径") String dirPath) {
         List<File> result = new ArrayList<>();
         File dir = new File(dirPath);
         if (!dir.exists() || !dir.isDirectory()) {
-            return result;
+            return "目录不存在: " + dirPath;
         }
         scanFilesRecursive(dir, result);
-        return result;
+        return result.stream()
+                .map(File::getAbsolutePath)
+                .collect(Collectors.joining("\n"));
     }
 
     /**
@@ -54,42 +58,63 @@ public class ScanTools {
      * 扫描指定目录下所有文件（非递归，仅当前层）
      *
      * @param dirPath 目录路径
-     * @return 文件列表
+     * @return 文件列表字符串
      */
     @Tool(description = "扫描指定目录下所有文件（非递归，仅当前层），返回文件列表")
-    public static List<File> scanFilesFlat(String dirPath) {
+    public String scanFilesFlat(@ToolParam(description = "目录路径") String dirPath) {
         File dir = new File(dirPath);
         if (!dir.exists() || !dir.isDirectory()) {
-            return Collections.emptyList();
+            return "目录不存在: " + dirPath;
         }
         File[] files = dir.listFiles();
-        return files == null ? Collections.emptyList() : Arrays.asList(files);
+        if (files == null || files.length == 0) {
+            return "目录为空";
+        }
+        return Arrays.stream(files)
+                .map(File::getAbsolutePath)
+                .collect(Collectors.joining("\n"));
     }
 
     /**
      * 扫描指定目录下所有文件，仅返回普通文件（非目录）
      *
      * @param dirPath 目录路径
-     * @return 文件列表
+     * @return 文件列表字符串
      */
     @Tool(description = "扫描指定目录下所有文件，仅返回普通文件（非目录），递归扫描")
-    public static List<File> scanOnlyFiles(String dirPath) {
-        return scanFilesRecursively(dirPath).stream()
+    public String scanOnlyFiles(@ToolParam(description = "目录路径") String dirPath) {
+        List<File> result = new ArrayList<>();
+        File dir = new File(dirPath);
+        if (!dir.exists() || !dir.isDirectory()) {
+            return "目录不存在: " + dirPath;
+        }
+        scanFilesRecursive(dir, result);
+        String filesStr = result.stream()
                 .filter(File::isFile)
-                .collect(Collectors.toList());
+                .map(File::getAbsolutePath)
+                .collect(Collectors.joining("\n"));
+        return filesStr.isEmpty() ? "未找到任何文件" : filesStr;
     }
 
     /**
      * 扫描指定目录下所有子目录
      *
      * @param dirPath 目录路径
-     * @return 目录列表
+     * @return 目录列表字符串
      */
     @Tool(description = "扫描指定目录下所有子目录，递归扫描")
-    public static List<File> scanDirectories(String dirPath) {
-        return scanFilesRecursively(dirPath).stream()
+    public String scanDirectories(@ToolParam(description = "目录路径") String dirPath) {
+        List<File> result = new ArrayList<>();
+        File dir = new File(dirPath);
+        if (!dir.exists() || !dir.isDirectory()) {
+            return "目录不存在: " + dirPath;
+        }
+        scanFilesRecursive(dir, result);
+        String dirsStr = result.stream()
                 .filter(File::isDirectory)
-                .collect(Collectors.toList());
+                .map(File::getAbsolutePath)
+                .collect(Collectors.joining("\n"));
+        return dirsStr.isEmpty() ? "未找到任何子目录" : dirsStr;
     }
 
     // ==================== 2. 扩展名/文件名过滤扫描 ====================
@@ -98,21 +123,34 @@ public class ScanTools {
      * 按扩展名过滤扫描文件（递归）
      *
      * @param dirPath    目录路径
-     * @param extensions 扩展名列表，如 ["java", "xml", "properties"]
-     * @return 匹配的文件列表
+     * @param extensions 扩展名列表，如 "java", "xml", "properties"
+     * @return 匹配的文件列表字符串
      */
-    @Tool(description = "按扩展名过滤扫描文件（递归），如 extensions=['java','xml']")
-    public static List<File> scanFilesByExtensions(String dirPath, String... extensions) {
-        Set<String> extSet = Arrays.stream(extensions)
+    @Tool(description = "按扩展名过滤扫描文件（递归），如 extensions='java','xml'")
+    public String scanFilesByExtensions(@ToolParam(description = "目录路径") String dirPath,
+                                        @ToolParam(description = "扩展名列表，如 'java','xml'") String extensions) {
+        String[] extArray = extensions.split(",");
+        Set<String> extSet = Arrays.stream(extArray)
+                .map(String::trim)
                 .map(e -> e.startsWith(".") ? e.toLowerCase() : "." + e.toLowerCase())
                 .collect(Collectors.toSet());
-        return scanFilesRecursively(dirPath).stream()
+
+        List<File> result = new ArrayList<>();
+        File dir = new File(dirPath);
+        if (!dir.exists() || !dir.isDirectory()) {
+            return "目录不存在: " + dirPath;
+        }
+        scanFilesRecursive(dir, result);
+
+        String matched = result.stream()
                 .filter(File::isFile)
                 .filter(f -> {
                     String name = f.getName().toLowerCase();
                     return extSet.stream().anyMatch(name::endsWith);
                 })
-                .collect(Collectors.toList());
+                .map(File::getAbsolutePath)
+                .collect(Collectors.joining("\n"));
+        return matched.isEmpty() ? "未找到匹配的文件" : matched;
     }
 
     /**
@@ -120,14 +158,24 @@ public class ScanTools {
      *
      * @param dirPath 目录路径
      * @param keyword 文件名关键词
-     * @return 匹配的文件列表
+     * @return 匹配的文件列表字符串
      */
     @Tool(description = "按文件名关键词过滤扫描文件（递归），查找文件名中包含指定关键词的文件")
-    public static List<File> scanFilesByNameKeyword(String dirPath, String keyword) {
-        return scanFilesRecursively(dirPath).stream()
+    public String scanFilesByNameKeyword(@ToolParam(description = "目录路径") String dirPath,
+                                         @ToolParam(description = "文件名关键词") String keyword) {
+        List<File> result = new ArrayList<>();
+        File dir = new File(dirPath);
+        if (!dir.exists() || !dir.isDirectory()) {
+            return "目录不存在: " + dirPath;
+        }
+        scanFilesRecursive(dir, result);
+
+        String matched = result.stream()
                 .filter(File::isFile)
                 .filter(f -> f.getName().toLowerCase().contains(keyword.toLowerCase()))
-                .collect(Collectors.toList());
+                .map(File::getAbsolutePath)
+                .collect(Collectors.joining("\n"));
+        return matched.isEmpty() ? "未找到包含关键词「" + keyword + "」的文件" : matched;
     }
 
     /**
@@ -136,11 +184,20 @@ public class ScanTools {
      * @param dirPath 目录路径
      * @param minSize 最小字节数（含），-1 表示不限制
      * @param maxSize 最大字节数（含），-1 表示不限制
-     * @return 匹配的文件列表
+     * @return 匹配的文件列表字符串
      */
     @Tool(description = "按文件大小范围过滤扫描文件（递归），minSize=-1表示不限制下限，maxSize=-1表示不限制上限")
-    public static List<File> scanFilesBySize(String dirPath, long minSize, long maxSize) {
-        return scanFilesRecursively(dirPath).stream()
+    public String scanFilesBySize(@ToolParam(description = "目录路径") String dirPath,
+                                  @ToolParam(description = "最小字节数（含），-1表示不限制") long minSize,
+                                  @ToolParam(description = "最大字节数（含），-1表示不限制") long maxSize) {
+        List<File> result = new ArrayList<>();
+        File dir = new File(dirPath);
+        if (!dir.exists() || !dir.isDirectory()) {
+            return "目录不存在: " + dirPath;
+        }
+        scanFilesRecursive(dir, result);
+
+        String matched = result.stream()
                 .filter(File::isFile)
                 .filter(f -> {
                     long len = f.length();
@@ -148,7 +205,9 @@ public class ScanTools {
                     boolean passMax = maxSize < 0 || len <= maxSize;
                     return passMin && passMax;
                 })
-                .collect(Collectors.toList());
+                .map(f -> f.getAbsolutePath() + " (" + f.length() + " 字节)")
+                .collect(Collectors.joining("\n"));
+        return matched.isEmpty() ? "未找到匹配的文件" : matched;
     }
 
     // ==================== 3. 包扫描（Class扫描） ====================
@@ -157,10 +216,10 @@ public class ScanTools {
      * 扫描指定包下的所有类名（基于类路径）
      *
      * @param packageName 包名，如 "com.example"
-     * @return 类全限定名列表
+     * @return 类全限定名列表字符串
      */
     @Tool(description = "扫描指定包下的所有类名（基于类路径），返回类全限定名列表，如 packageName='com.example'")
-    public static List<String> scanClassesInPackage(String packageName) {
+    public String scanClassesInPackage(@ToolParam(description = "包名，如 com.example") String packageName) {
         List<String> classNames = new ArrayList<>();
         String path = packageName.replace('.', '/');
         try {
@@ -176,9 +235,12 @@ public class ScanTools {
                 }
             }
         } catch (Exception e) {
-            System.err.println("扫描包失败: " + packageName + " - " + e.getMessage());
+            return "扫描包失败: " + packageName + " - " + e.getMessage();
         }
-        return classNames;
+        if (classNames.isEmpty()) {
+            return "包「" + packageName + "」下未找到任何类";
+        }
+        return classNames.stream().collect(Collectors.joining("\n"));
     }
 
     /**
@@ -205,20 +267,43 @@ public class ScanTools {
      * 扫描指定包下的所有类（并尝试加载Class对象）
      *
      * @param packageName 包名
-     * @return Class对象列表（仅成功加载的）
+     * @return 类全限定名列表字符串
      */
     @Tool(description = "扫描指定包下的所有类并加载为Class对象，返回类全限定名列表，如 packageName='com.example'")
-    public static List<Class<?>> scanClasses(String packageName) {
-        return scanClassesInPackage(packageName).stream()
+    public String scanClasses(@ToolParam(description = "包名，如 com.example") String packageName) {
+        List<String> classNames = new ArrayList<>();
+        String path = packageName.replace('.', '/');
+        try {
+            Enumeration<java.net.URL> resources = Thread.currentThread()
+                    .getContextClassLoader().getResources(path);
+            while (resources.hasMoreElements()) {
+                java.net.URL resource = resources.nextElement();
+                if (resource.getProtocol().equals("file")) {
+                    File dir = new File(resource.toURI());
+                    if (dir.isDirectory()) {
+                        scanClassesInDir(dir, packageName, classNames);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            return "扫描包失败: " + packageName + " - " + e.getMessage();
+        }
+
+        List<String> loaded = classNames.stream()
                 .map(name -> {
                     try {
-                        return Class.forName(name);
+                        Class.forName(name);
+                        return name + " (加载成功)";
                     } catch (ClassNotFoundException e) {
-                        return null;
+                        return name + " (加载失败)";
                     }
                 })
-                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
+
+        if (loaded.isEmpty()) {
+            return "包「" + packageName + "」下未找到任何类";
+        }
+        return loaded.stream().collect(Collectors.joining("\n"));
     }
 
     // ==================== 4. 注解扫描 ====================
@@ -227,60 +312,154 @@ public class ScanTools {
      * 扫描指定包下带有特定注解的类
      *
      * @param packageName  包名
-     * @param annotation   注解Class
-     * @param <A>          注解类型
-     * @return 带有该注解的类列表
+     * @param annotation   注解全限定名，如 "org.springframework.stereotype.Service"
+     * @return 带有该注解的类列表字符串
      */
-    @SuppressWarnings("unchecked")
-    @Tool(description = "扫描指定包下带有特定注解的类，返回类全限定名列表，如 packageName='com.example', annotation=org.springframework.stereotype.Service")
-    public static <A extends java.lang.annotation.Annotation> List<Class<?>> scanAnnotatedClasses(
-            String packageName, Class<A> annotation) {
+    @Tool(description = "扫描指定包下带有特定注解的类，返回类全限定名列表，如 packageName='com.example', annotation='org.springframework.stereotype.Service'")
+    public String scanAnnotatedClasses(@ToolParam(description = "包名，如 com.example") String packageName,
+                                       @ToolParam(description = "注解全限定名，如 org.springframework.stereotype.Service") String annotation) {
+        List<String> classNames = new ArrayList<>();
+        String path = packageName.replace('.', '/');
+        try {
+            Enumeration<java.net.URL> resources = Thread.currentThread()
+                    .getContextClassLoader().getResources(path);
+            while (resources.hasMoreElements()) {
+                java.net.URL resource = resources.nextElement();
+                if (resource.getProtocol().equals("file")) {
+                    File dir = new File(resource.toURI());
+                    if (dir.isDirectory()) {
+                        scanClassesInDir(dir, packageName, classNames);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            return "扫描包失败: " + packageName + " - " + e.getMessage();
+        }
 
-        return scanClasses(packageName).stream()
-                .filter(clazz -> clazz.isAnnotationPresent(annotation))
+        Class<?> annotationClass;
+        try {
+            annotationClass = Class.forName(annotation);
+        } catch (ClassNotFoundException e) {
+            return "未找到注解类: " + annotation;
+        }
+
+        Class<?> finalAnnotationClass = annotationClass;
+        List<String> result = classNames.stream()
+                .map(name -> {
+                    try {
+                        Class<?> clazz = Class.forName(name);
+                        if (clazz.isAnnotationPresent((Class<? extends java.lang.annotation.Annotation>) finalAnnotationClass)) {
+                            return name;
+                        }
+                        return null;
+                    } catch (ClassNotFoundException e) {
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
+
+        if (result.isEmpty()) {
+            return "包「" + packageName + "」下未找到带有 @" + annotationClass.getSimpleName() + " 注解的类";
+        }
+        return result.stream().collect(Collectors.joining("\n"));
     }
 
     /**
      * 扫描指定类中带有特定注解的方法
      *
-     * @param clazz      目标类
-     * @param annotation 注解Class
-     * @param <A>        注解类型
-     * @return 带有该注解的方法列表
+     * @param clazz      类全限定名
+     * @param annotation 注解全限定名
+     * @return 方法名列表字符串
      */
     @SuppressWarnings("unchecked")
     @Tool(description = "扫描指定类中带有特定注解的方法，返回方法名列表")
-    public static <A extends java.lang.annotation.Annotation> List<java.lang.reflect.Method> scanAnnotatedMethods(
-            Class<?> clazz, Class<A> annotation) {
+    public String scanAnnotatedMethods(@ToolParam(description = "类全限定名，如 com.example.MyClass") String clazz,
+                                       @ToolParam(description = "注解全限定名，如 org.springframework.web.bind.annotation.GetMapping") String annotation) {
+        Class<?> targetClass;
+        Class<? extends java.lang.annotation.Annotation> annotationClass;
+        try {
+            targetClass = Class.forName(clazz);
+            annotationClass = (Class<? extends java.lang.annotation.Annotation>) Class.forName(annotation);
+        } catch (ClassNotFoundException e) {
+            return "未找到类或注解: " + e.getMessage();
+        }
 
-        return Arrays.stream(clazz.getDeclaredMethods())
-                .filter(method -> method.isAnnotationPresent(annotation))
+        List<java.lang.reflect.Method> methods = Arrays.stream(targetClass.getDeclaredMethods())
+                .filter(method -> method.isAnnotationPresent(annotationClass))
                 .collect(Collectors.toList());
+
+        if (methods.isEmpty()) {
+            return "类「" + clazz + "」中未找到带有 @" + annotationClass.getSimpleName() + " 注解的方法";
+        }
+        return methods.stream()
+                .map(m -> m.getName() + "(" + Arrays.stream(m.getParameterTypes())
+                        .map(Class::getSimpleName)
+                        .collect(Collectors.joining(", ")) + ")")
+                .collect(Collectors.joining("\n"));
     }
 
     /**
      * 扫描指定包下所有类中带有特定注解的方法
      *
      * @param packageName 包名
-     * @param annotation  注解Class
-     * @param <A>         注解类型
-     * @return Map：类 -> 该类的注解方法列表
+     * @param annotation  注解全限定名
+     * @return 类名->方法列表 的字符串表示
      */
     @SuppressWarnings("unchecked")
     @Tool(description = "扫描指定包下所有类中带有特定注解的方法，返回 类名->方法列表 的映射")
-    public static <A extends java.lang.annotation.Annotation> Map<Class<?>, List<java.lang.reflect.Method>> scanAnnotatedMethodsInPackage(
-            String packageName, Class<A> annotation) {
+    public String scanAnnotatedMethodsInPackage(@ToolParam(description = "包名，如 com.example") String packageName,
+                                                @ToolParam(description = "注解全限定名，如 org.springframework.web.bind.annotation.GetMapping") String annotation) {
+        List<String> classNames = new ArrayList<>();
+        String path = packageName.replace('.', '/');
+        try {
+            Enumeration<java.net.URL> resources = Thread.currentThread()
+                    .getContextClassLoader().getResources(path);
+            while (resources.hasMoreElements()) {
+                java.net.URL resource = resources.nextElement();
+                if (resource.getProtocol().equals("file")) {
+                    File dir = new File(resource.toURI());
+                    if (dir.isDirectory()) {
+                        scanClassesInDir(dir, packageName, classNames);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            return "扫描包失败: " + packageName + " - " + e.getMessage();
+        }
 
-        Map<Class<?>, List<java.lang.reflect.Method>> result = new LinkedHashMap<>();
-        List<Class<?>> classes = scanClasses(packageName);
-        for (Class<?> clazz : classes) {
-            List<java.lang.reflect.Method> methods = scanAnnotatedMethods(clazz, annotation);
-            if (!methods.isEmpty()) {
-                result.put(clazz, methods);
+        Class<? extends java.lang.annotation.Annotation> annotationClass;
+        try {
+            annotationClass = (Class<? extends java.lang.annotation.Annotation>) Class.forName(annotation);
+        } catch (ClassNotFoundException e) {
+            return "未找到注解类: " + annotation;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (String className : classNames) {
+            try {
+                Class<?> clazz = Class.forName(className);
+                List<java.lang.reflect.Method> methods = Arrays.stream(clazz.getDeclaredMethods())
+                        .filter(method -> method.isAnnotationPresent(annotationClass))
+                        .collect(Collectors.toList());
+                if (!methods.isEmpty()) {
+                    sb.append("类: ").append(className).append("\n");
+                    for (java.lang.reflect.Method m : methods) {
+                        sb.append("  - ").append(m.getName()).append("(")
+                                .append(Arrays.stream(m.getParameterTypes())
+                                        .map(Class::getSimpleName)
+                                        .collect(Collectors.joining(", ")))
+                                .append(")\n");
+                    }
+                }
+            } catch (ClassNotFoundException ignored) {
             }
         }
-        return result;
+
+        if (sb.length() == 0) {
+            return "包「" + packageName + "」下未找到带有 @" + annotationClass.getSimpleName() + " 注解的方法";
+        }
+        return sb.toString().trim();
     }
 
     // ==================== 5. 接口/父类扫描 ====================
@@ -289,30 +468,114 @@ public class ScanTools {
      * 扫描指定包下实现了特定接口的所有类
      *
      * @param packageName   包名
-     * @param interfaceClzz 接口Class
-     * @return 实现该接口的类列表
+     * @param interfaceClzz 接口全限定名
+     * @return 实现该接口的类列表字符串
      */
     @Tool(description = "扫描指定包下实现了特定接口的所有类，返回类全限定名列表")
-    public static List<Class<?>> scanClassesImplementing(String packageName, Class<?> interfaceClzz) {
-        return scanClasses(packageName).stream()
-                .filter(clazz -> !clazz.equals(interfaceClzz))
-                .filter(interfaceClzz::isAssignableFrom)
+    public String scanClassesImplementing(@ToolParam(description = "包名，如 com.example") String packageName,
+                                          @ToolParam(description = "接口全限定名，如 java.util.List") String interfaceClzz) {
+        List<String> classNames = new ArrayList<>();
+        String path = packageName.replace('.', '/');
+        try {
+            Enumeration<java.net.URL> resources = Thread.currentThread()
+                    .getContextClassLoader().getResources(path);
+            while (resources.hasMoreElements()) {
+                java.net.URL resource = resources.nextElement();
+                if (resource.getProtocol().equals("file")) {
+                    File dir = new File(resource.toURI());
+                    if (dir.isDirectory()) {
+                        scanClassesInDir(dir, packageName, classNames);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            return "扫描包失败: " + packageName + " - " + e.getMessage();
+        }
+
+        Class<?> interfaceClass;
+        try {
+            interfaceClass = Class.forName(interfaceClzz);
+        } catch (ClassNotFoundException e) {
+            return "未找到接口类: " + interfaceClzz;
+        }
+
+        Class<?> finalInterfaceClass = interfaceClass;
+        List<String> result = classNames.stream()
+                .map(name -> {
+                    try {
+                        Class<?> clazz = Class.forName(name);
+                        if (!clazz.equals(finalInterfaceClass) && finalInterfaceClass.isAssignableFrom(clazz)) {
+                            return name;
+                        }
+                        return null;
+                    } catch (ClassNotFoundException e) {
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
+
+        if (result.isEmpty()) {
+            return "包「" + packageName + "」下未找到实现 " + interfaceClass.getSimpleName() + " 接口的类";
+        }
+        return result.stream().collect(Collectors.joining("\n"));
     }
 
     /**
      * 扫描指定包下继承自特定父类的所有类
      *
      * @param packageName 包名
-     * @param superClzz   父类Class
-     * @return 子类列表
+     * @param superClzz   父类全限定名
+     * @return 子类列表字符串
      */
     @Tool(description = "扫描指定包下继承自特定父类的所有类，返回类全限定名列表")
-    public static List<Class<?>> scanClassesExtending(String packageName, Class<?> superClzz) {
-        return scanClasses(packageName).stream()
-                .filter(clazz -> !clazz.equals(superClzz))
-                .filter(clazz -> superClzz.isAssignableFrom(clazz))
+    public String scanClassesExtending(@ToolParam(description = "包名，如 com.example") String packageName,
+                                       @ToolParam(description = "父类全限定名，如 java.util.ArrayList") String superClzz) {
+        List<String> classNames = new ArrayList<>();
+        String path = packageName.replace('.', '/');
+        try {
+            Enumeration<java.net.URL> resources = Thread.currentThread()
+                    .getContextClassLoader().getResources(path);
+            while (resources.hasMoreElements()) {
+                java.net.URL resource = resources.nextElement();
+                if (resource.getProtocol().equals("file")) {
+                    File dir = new File(resource.toURI());
+                    if (dir.isDirectory()) {
+                        scanClassesInDir(dir, packageName, classNames);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            return "扫描包失败: " + packageName + " - " + e.getMessage();
+        }
+
+        Class<?> superClass;
+        try {
+            superClass = Class.forName(superClzz);
+        } catch (ClassNotFoundException e) {
+            return "未找到父类: " + superClzz;
+        }
+
+        Class<?> finalSuperClass = superClass;
+        List<String> result = classNames.stream()
+                .map(name -> {
+                    try {
+                        Class<?> clazz = Class.forName(name);
+                        if (!clazz.equals(finalSuperClass) && finalSuperClass.isAssignableFrom(clazz)) {
+                            return name;
+                        }
+                        return null;
+                    } catch (ClassNotFoundException e) {
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
+
+        if (result.isEmpty()) {
+            return "包「" + packageName + "」下未找到继承自 " + superClass.getSimpleName() + " 的类";
+        }
+        return result.stream().collect(Collectors.joining("\n"));
     }
 
     // ==================== 6. 内容扫描（文本搜索） ====================
@@ -322,13 +585,38 @@ public class ScanTools {
      *
      * @param dirPath 目录路径
      * @param keyword 搜索关键词
-     * @return Map：文件路径 -> 匹配行列表
+     * @return 搜索结果字符串
      */
     @Tool(description = "在指定目录的文本文件中搜索关键词（递归），返回 文件路径->匹配行列表 的映射")
-    public static Map<String, List<String>> searchTextInFiles(String dirPath, String keyword) {
-        Map<String, List<String>> result = new LinkedHashMap<>();
-        List<File> textFiles = scanFilesByExtensions(dirPath, "txt", "java", "xml", "json",
-                "yaml", "yml", "properties", "sql", "html", "css", "js", "ts", "md", "log");
+    public String searchTextInFiles(@ToolParam(description = "目录路径") String dirPath,
+                                    @ToolParam(description = "搜索关键词") String keyword) {
+        List<File> allFiles = new ArrayList<>();
+        File dir = new File(dirPath);
+        if (!dir.exists() || !dir.isDirectory()) {
+            return "目录不存在: " + dirPath;
+        }
+        scanFilesRecursive(dir, allFiles);
+
+        List<File> textFiles = allFiles.stream()
+                .filter(File::isFile)
+                .filter(f -> {
+                    String name = f.getName().toLowerCase();
+                    return name.endsWith(".txt") || name.endsWith(".java") || name.endsWith(".xml")
+                            || name.endsWith(".json") || name.endsWith(".yaml") || name.endsWith(".yml")
+                            || name.endsWith(".properties") || name.endsWith(".sql") || name.endsWith(".html")
+                            || name.endsWith(".css") || name.endsWith(".js") || name.endsWith(".ts")
+                            || name.endsWith(".md") || name.endsWith(".log") || name.endsWith(".csv")
+                            || name.endsWith(".py") || name.endsWith(".yml");
+                })
+                .collect(Collectors.toList());
+
+        if (textFiles.isEmpty()) {
+            return "目录「" + dirPath + "」下未找到可搜索的文本文件";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        int totalMatchedFiles = 0;
+        int totalMatchedLines = 0;
 
         for (File file : textFiles) {
             try (Scanner scanner = new Scanner(file, "UTF-8")) {
@@ -342,12 +630,24 @@ public class ScanTools {
                     }
                 }
                 if (!matchedLines.isEmpty()) {
-                    result.put(file.getAbsolutePath(), matchedLines);
+                    totalMatchedFiles++;
+                    totalMatchedLines += matchedLines.size();
+                    sb.append("=== ").append(file.getAbsolutePath()).append(" ===\n");
+                    for (String matchedLine : matchedLines) {
+                        sb.append(matchedLine).append("\n");
+                    }
+                    sb.append("\n");
                 }
             } catch (Exception ignored) {
             }
         }
-        return result;
+
+        if (totalMatchedFiles == 0) {
+            return "未在目录「" + dirPath + "」中找到包含「" + keyword + "」的内容";
+        }
+
+        return "搜索完成！共在 " + totalMatchedFiles + " 个文件中找到 " + totalMatchedLines + " 处匹配：\n\n"
+                + sb.toString().trim();
     }
 
     // ==================== 7. 工具方法 ====================
@@ -359,7 +659,7 @@ public class ScanTools {
      * @return 树形结构字符串
      */
     @Tool(description = "获取文件树结构（用于展示），返回格式化的树形字符串")
-    public static String getFileTree(String dirPath) {
+    public String getFileTree(@ToolParam(description = "目录路径") String dirPath) {
         StringBuilder sb = new StringBuilder();
         File dir = new File(dirPath);
         if (!dir.exists() || !dir.isDirectory()) {
@@ -403,23 +703,21 @@ public class ScanTools {
      * 获取文件统计信息
      *
      * @param dirPath 目录路径
-     * @return 统计信息 Map
+     * @return 统计信息字符串
      */
     @Tool(description = "获取文件统计信息，包括总条目数、文件数、目录数、总大小、扩展名统计等")
-    public static Map<String, Object> getFileStatistics(String dirPath) {
-        Map<String, Object> stats = new LinkedHashMap<>();
-        List<File> allFiles = scanFilesRecursively(dirPath);
+    public String getFileStatistics(@ToolParam(description = "目录路径") String dirPath) {
+        List<File> allFiles = new ArrayList<>();
+        File dir = new File(dirPath);
+        if (!dir.exists() || !dir.isDirectory()) {
+            return "目录不存在: " + dirPath;
+        }
+        scanFilesRecursive(dir, allFiles);
+
         List<File> files = allFiles.stream().filter(File::isFile).collect(Collectors.toList());
         List<File> dirs = allFiles.stream().filter(File::isDirectory).collect(Collectors.toList());
 
-        stats.put("总条目数", allFiles.size());
-        stats.put("文件数", files.size());
-        stats.put("目录数", dirs.size());
-
-        // 总大小
         long totalSize = files.stream().mapToLong(File::length).sum();
-        stats.put("总大小(字节)", totalSize);
-        stats.put("总大小(可读)", formatFileSize(totalSize));
 
         // 扩展名统计
         Map<String, Long> extCount = files.stream()
@@ -429,9 +727,20 @@ public class ScanTools {
                     return idx == -1 ? "(无扩展名)" : name.substring(idx + 1).toLowerCase();
                 })
                 .collect(Collectors.groupingBy(e -> e, Collectors.counting()));
-        stats.put("扩展名统计", extCount);
 
-        return stats;
+        StringBuilder sb = new StringBuilder();
+        sb.append("===== 文件统计信息 =====\n");
+        sb.append("目录路径: ").append(dirPath).append("\n");
+        sb.append("总条目数: ").append(allFiles.size()).append("\n");
+        sb.append("文件数: ").append(files.size()).append("\n");
+        sb.append("目录数: ").append(dirs.size()).append("\n");
+        sb.append("总大小: ").append(formatFileSize(totalSize)).append(" (").append(totalSize).append(" 字节)\n");
+        sb.append("\n--- 扩展名统计 ---\n");
+        extCount.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .forEach(entry -> sb.append(".").append(entry.getKey()).append(": ").append(entry.getValue()).append(" 个文件\n"));
+
+        return sb.toString();
     }
 
     /**
@@ -442,23 +751,5 @@ public class ScanTools {
         if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
         if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
         return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
-    }
-
-    // ==================== main 测试方法 ====================
-
-    public static void main(String[] args) {
-        // 测试扫描
-        String testPath = "."; // 当前目录
-
-        System.out.println("===== 文件树 =====");
-        System.out.println(getFileTree(testPath));
-
-        System.out.println("\n===== 统计信息 =====");
-        Map<String, Object> stats = getFileStatistics(testPath);
-        stats.forEach((k, v) -> System.out.println(k + ": " + v));
-
-        System.out.println("\n===== Java文件扫描 =====");
-        List<File> javaFiles = scanFilesByExtensions(testPath, "java");
-        javaFiles.forEach(f -> System.out.println(f.getAbsolutePath()));
     }
 }

@@ -1,0 +1,10 @@
+{
+  "name": "aiagent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Agent 智能对话系统 - 项目根配置",
+  "scripts": {
+    "update-memory": "node update-memory.js",
+    "update-memory:hook": "node update-memory.js --install-hook"
+  }
+}
